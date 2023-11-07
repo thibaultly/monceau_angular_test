@@ -1,11 +1,12 @@
-import { Component, inject } from "@angular/core";
+import { Component, OnDestroy, OnInit, inject } from "@angular/core";
 import { NgFor } from "@angular/common";
 import { MatTableModule } from "@angular/material/table";
-import { MatPaginatorModule } from "@angular/material/paginator";
+import { MatPaginatorModule, PageEvent } from "@angular/material/paginator";
 import { NbaApiService } from "./data_access/nba-api.service";
 import { Player, Team } from "./models/nba-api.model";
 import { MatButtonModule } from "@angular/material/button";
 import { RouterLink } from "@angular/router";
+import { Subject, takeUntil } from "rxjs";
 
 const PLAYERS_TABLE_COLUMN = [
   {
@@ -79,13 +80,14 @@ const PLAYERS_TABLE_COLUMN = [
         [showFirstLastButtons]="true"
         showFirstLastButtons
         aria-label="Select page of periodic elements"
+        (page)="onPageChange($event)"
       >
       </mat-paginator>
     </div>
   `,
   styles: [],
 })
-export default class PlayersTableComponent {
+export default class PlayersTableComponent implements OnInit, OnDestroy {
   // les colonnes de la table a afficher
   public columns = PLAYERS_TABLE_COLUMN;
   public columnsValues = this.columns.map((col) => col.value);
@@ -115,4 +117,46 @@ export default class PlayersTableComponent {
   // playersTeam décrit les équipes dont le nom doit être affiché au dessus de la table.
   // Ce tableau doit contenir 1 seule occurence de chaque équipe présente dans la page actuelle.
   public playersTeams: Array<Team> = [];
+
+  private destroy$ = new Subject<void>();
+
+  ngOnInit(): void {
+    this.loadPlayers();
+  }
+
+  private loadPlayers(page: number = 0, perPage: number = 10): void {
+    this.nbaService
+      .getPlayers(page, perPage)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (response) => {
+          this.playersData = response.data;
+          this.totalPlayersCount = response.meta.total_count;
+          this.extractTeams();
+        },
+        error: (err) => {
+          //error handling here
+          console.error("Failed to load players", err);
+        },
+      });
+  }
+
+  private extractTeams(): void {
+    const teamsMap = new Map<number, Team>();
+    this.playersData.forEach((player) => {
+      if (!teamsMap.has(player.team.id)) {
+        teamsMap.set(player.team.id, player.team);
+      }
+    });
+    this.playersTeams = Array.from(teamsMap.values());
+  }
+
+  public onPageChange(event: PageEvent): void {
+    this.loadPlayers(event.pageIndex, event.pageSize);
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
 }
