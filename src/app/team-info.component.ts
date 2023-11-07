@@ -1,9 +1,10 @@
-import { Component, inject } from "@angular/core";
+import { Component, OnDestroy, OnInit } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { MatCardModule } from "@angular/material/card";
 import { NbaApiService } from "./data_access/nba-api.service";
-import { Observable } from "rxjs";
+import { Observable, Subject, switchMap, takeUntil } from "rxjs";
 import { Team } from "./models/nba-api.model";
+import { ActivatedRoute } from "@angular/router";
 
 @Component({
   selector: "app-team-info",
@@ -37,7 +38,7 @@ import { Team } from "./models/nba-api.model";
   `,
   styles: [],
 })
-export default class TeamInfoComponent {
+export default class TeamInfoComponent implements OnInit, OnDestroy {
   // Comme pour l'exercice précédent la variable teamData$
   // contient les information nécessaires au fonctionnement
   // de la page.
@@ -47,5 +48,29 @@ export default class TeamInfoComponent {
   // contienne les informations de l'equipe dont l'id est le meme que celui
   // du paramètre d'url `teamId`. (de base, le composant affiche tout le temps les données de l'équipe 15)
   // (vous pouvez jeter un oeil au fichier app.routes.ts si ce n'est pas clair)
-  public teamData$: Observable<Team> = inject(NbaApiService).getTeam("15");
+  public teamData$!: Observable<Team>;
+  private destroy$ = new Subject<void>();
+
+  constructor(
+    private nbaApiService: NbaApiService,
+    private route: ActivatedRoute
+  ) {}
+
+  ngOnInit(): void {
+    this.teamData$ = this.route.paramMap.pipe(
+      switchMap((param) => {
+        const teamId = param.get("teamId");
+        if (!teamId) {
+          throw new Error("Team ID not found");
+        }
+        return this.nbaApiService.getTeam(teamId);
+      }),
+      takeUntil(this.destroy$)
+    );
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
 }
